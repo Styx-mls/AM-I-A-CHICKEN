@@ -1,0 +1,199 @@
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from torchvision import datasets, transforms
+
+from model import ChickenCNN
+
+DATA_DIR = Path("Core_Dataset/processed_v1")
+MODEL_DIR = Path("models")
+
+#TRAINING SPECS
+
+BATCH_SIZE = 32
+EPOCHS = 5
+LEARNING_RATE = 0.001 
+
+MODEL_DIR.mkdir(parents = True, exist_ok = True)
+
+device = torch.device("cpu")
+
+#Transforms 
+
+train_transform = transforms.Compose([
+    transforms.Resize((128, 128)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+])
+
+val_transform = transforms.Compose([
+    transforms.Resize((128, 128)),
+    transforms.ToTensor(),
+])
+
+#Datasets
+
+train_dataset = datasets.ImageFolder(
+    DATA_DIR / "train",
+    transform = train_transform
+)
+
+val_dataset = datasets.ImageFolder(
+    DATA_DIR / "val",
+    transform = val_transform
+)
+
+print("Classes:", train_dataset.classes)
+print("Class mapping:", train_dataset.class_to_idx)
+
+#Chicken oversampling
+
+class_counts = [0]* len(train_dataset.classes)
+
+for _, label in train_dataset.samples:
+
+    class_counts[label] += 1
+
+print("Training class counts :", class_counts)
+
+class_weights = [
+    1.5 / class_counts[0], #chicken
+    1 / class_counts[1], #human
+    1 / class_counts[2] #other 
+]
+
+sample_weights = [
+    class_weights[label]
+    for _, label in train_dataset.samples
+]
+
+sampler = WeightedRandomSampler(
+    weights = sample_weights,
+    num_samples = len(train_dataset),
+    replacement = True
+)
+
+#DataLoaders
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size = BATCH_SIZE,
+    sampler = sampler
+)
+
+val_loader = DataLoader(
+    val_dataset,
+    batch_size = BATCH_SIZE,
+    shuffle = False
+)
+
+#Model
+
+model = ChickenCNN(num_classes = 3).to(device)
+state_dict = torch.load("models/best_model.pt", weights_only = True)
+model.load_state_dict(state_dict)
+
+criterion = nn.CrossEntropyLoss()
+
+optimizer = torch.optim.Adam(
+    model.parameters(),
+    lr = LEARNING_RATE
+)
+
+#Training
+
+best_val_accuracy = 0.0
+
+for epoch in range(EPOCHS):
+
+    model.train()
+
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    for images, labels in train_loader:
+
+        images = images.to(device)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item() * images.size(0)
+
+        _, predictions = torch.max(outputs, 1)
+
+        correct+= (predictions == labels).sum().item()
+        total += labels.size(0)
+
+    train_loss= running_loss / total
+    train_accuracy = correct /total
+
+# Validation
+
+
+    model.eval()
+
+    val_loss_total = 0.0
+    val_correct = 0
+    val_total = 0
+
+    with torch.no_grad():
+
+        for images, labels in val_loader:
+
+            images = images.to(device)
+            labels = labels.to(device)
+
+            outputs = model(images)
+
+            loss = criterion(outputs, labels)
+
+            val_loss_total += loss.item() * images.size(0)
+
+            _, predictions = torch.max(outputs, 1)
+
+            val_correct += (
+                predictions == labels
+            ).sum().item()
+
+            val_total += labels.size(0)
+
+    val_loss = val_loss_total / val_total
+    val_accuracy = val_correct / val_total
+
+
+    print(
+        f"Epoch {epoch + 1}/{EPOCHS} | "
+        f"Train Loss: {train_loss:.4f} | "
+        f"Train Acc: {train_accuracy:.4f} | "
+        f"Val Loss: {val_loss:.4f} | "
+        f"Val Acc: {val_accuracy:.4f}"
+    )
+
+
+#Save best model
+    if val_accuracy > best_val_accuracy:
+
+        best_val_accuracy = val_accuracy
+
+        torch.save(
+            model.state_dict(),
+            MODEL_DIR / "best_model.pt"
+        )
+
+        print(
+            f"Saved new best model "
+            f"with validation accuracy "
+            f"{best_val_accuracy:.4f}"
+        )
+
+
+print("\nTraining complete.")
+print("Best validation accuracy:", best_val_accuracy)

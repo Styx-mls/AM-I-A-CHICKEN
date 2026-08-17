@@ -5,195 +5,326 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
-from model import ChickenCNN
+from backend.src.model import ChickenCNN
 
-DATA_DIR = Path("Core_Dataset/processed_v1")
-MODEL_DIR = Path("models")
 
-#TRAINING SPECS
+TRAINING_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = TRAINING_DIR.parent
+
+DATA_DIR = TRAINING_DIR / "Core_Dataset" / "processed_v1"
+
+# Candidate model produced by training
+CANDIDATE_MODEL_DIR = TRAINING_DIR / "models"
+CANDIDATE_MODEL_FILE = CANDIDATE_MODEL_DIR / "candidate_model.pt"
+
+# Current deployed/production model
+PRODUCTION_MODEL_FILE = PROJECT_ROOT / "backend" / "models" / "best_model.pt"
+
+
+# TRAINING SPECS
 
 BATCH_SIZE = 32
 EPOCHS = 5
-LEARNING_RATE = 0.001 
+LEARNING_RATE = 0.001
 
-MODEL_DIR.mkdir(parents = True, exist_ok = True)
 
-device = torch.device("cpu")
-
-#Transforms 
-
-train_transform = transforms.Compose([
-    transforms.Resize((128, 128)),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-])
-
-val_transform = transforms.Compose([
-    transforms.Resize((128, 128)),
-    transforms.ToTensor(),
-])
-
-#Datasets
-
-train_dataset = datasets.ImageFolder(
-    DATA_DIR / "train",
-    transform = train_transform
+CANDIDATE_MODEL_DIR.mkdir(
+    parents=True,
+    exist_ok=True
 )
 
-val_dataset = datasets.ImageFolder(
-    DATA_DIR / "val",
-    transform = val_transform
-)
 
-print("Classes:", train_dataset.classes)
-print("Class mapping:", train_dataset.class_to_idx)
+def train_model() -> str:
 
-#Chicken oversampling
+    device = torch.device("cpu")
 
-class_counts = [0]* len(train_dataset.classes)
+    # Transforms
 
-for _, label in train_dataset.samples:
+    train_transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+    ])
 
-    class_counts[label] += 1
+    val_transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+    ])
 
-print("Training class counts :", class_counts)
+    # Datasets
 
-class_weights = [
-    1.5 / class_counts[0], #chicken
-    1 / class_counts[1], #human
-    1 / class_counts[2] #other 
-]
+    train_dataset = datasets.ImageFolder(
+        DATA_DIR / "train",
+        transform=train_transform
+    )
 
-sample_weights = [
-    class_weights[label]
-    for _, label in train_dataset.samples
-]
+    val_dataset = datasets.ImageFolder(
+        DATA_DIR / "val",
+        transform=val_transform
+    )
 
-sampler = WeightedRandomSampler(
-    weights = sample_weights,
-    num_samples = len(train_dataset),
-    replacement = True
-)
+    print("Classes:", train_dataset.classes)
+    print("Class mapping:", train_dataset.class_to_idx)
 
-#DataLoaders
+    # Chicken oversampling
 
-train_loader = DataLoader(
-    train_dataset,
-    batch_size = BATCH_SIZE,
-    sampler = sampler
-)
+    class_counts = [0] * len(train_dataset.classes)
 
-val_loader = DataLoader(
-    val_dataset,
-    batch_size = BATCH_SIZE,
-    shuffle = False
-)
+    for _, label in train_dataset.samples:
+        class_counts[label] += 1
 
-#Model
+    print("Training class counts:", class_counts)
 
-model = ChickenCNN(num_classes = 3).to(device)
-state_dict = torch.load("models/best_model.pt", weights_only = True)
-model.load_state_dict(state_dict)
+    class_weights = [
+        1.5 / class_counts[0],  # chicken
+        1 / class_counts[1],    # human
+        1 / class_counts[2],    # other
+    ]
 
-criterion = nn.CrossEntropyLoss()
+    sample_weights = [
+        class_weights[label]
+        for _, label in train_dataset.samples
+    ]
 
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr = LEARNING_RATE
-)
+    sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(train_dataset),
+        replacement=True
+    )
 
-#Training
+    # DataLoaders
 
-best_val_accuracy = 0.0
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        sampler=sampler
+    )
 
-for epoch in range(EPOCHS):
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False
+    )
 
-    model.train()
+    # Training mode
 
-    running_loss = 0.0
-    correct = 0
-    total = 0
+    print("\n--- TRAINING MODE ---")
+    print("1. TRAIN FROM SCRATCH")
+    print("   Creates a new ChickenCNN with fresh random weights.")
+    print("   Existing production weights will NOT be loaded.")
+    print()
 
-    for images, labels in train_loader:
+    print("2. CONTINUE TRAINING")
+    print("   Loads the current production best_model.pt first.")
+    print("   Training then continues from those learned weights.")
 
-        images = images.to(device)
-        labels = labels.to(device)
+    choice = input(
+        "\nChoose training mode [1 = scratch, 2 = continue]: "
+    ).strip()
 
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item() * images.size(0)
+    if choice == "1":
+        resume = False
 
-        _, predictions = torch.max(outputs, 1)
+    elif choice == "2":
+        resume = True
 
-        correct+= (predictions == labels).sum().item()
-        total += labels.size(0)
+    else:
+        raise ValueError(
+            "Invalid choice. Enter 1 to train from scratch "
+            "or 2 to continue training."
+        )
 
-    train_loss= running_loss / total
-    train_accuracy = correct /total
+    # Model
 
-# Validation
+    model = ChickenCNN(
+        num_classes=3
+    ).to(device)
 
+    if resume:
 
-    model.eval()
+        if not PRODUCTION_MODEL_FILE.exists():
+            raise FileNotFoundError(
+                "Cannot continue training because the production "
+                f"checkpoint does not exist:\n"
+                f"{PRODUCTION_MODEL_FILE}"
+            )
 
-    val_loss_total = 0.0
-    val_correct = 0
-    val_total = 0
+        print("\nCONTINUING TRAINING")
 
-    with torch.no_grad():
+        print(
+            "Loading production checkpoint from:\n"
+            f"{PRODUCTION_MODEL_FILE}"
+        )
 
-        for images, labels in val_loader:
+        state_dict = torch.load(
+            PRODUCTION_MODEL_FILE,
+            map_location=device,
+            weights_only=True
+        )
+
+        model.load_state_dict(
+            state_dict
+        )
+
+    else:
+
+        print("\nTRAINING FROM SCRATCH")
+        print(
+            "No existing model weights will be loaded."
+        )
+
+    criterion = nn.CrossEntropyLoss()
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=LEARNING_RATE
+    )
+
+    # Training
+
+    best_val_accuracy = 0.0
+
+    for epoch in range(EPOCHS):
+
+        model.train()
+
+        running_loss = 0.0
+        correct = 0
+        total = 0
+
+        for images, labels in train_loader:
 
             images = images.to(device)
             labels = labels.to(device)
 
+            optimizer.zero_grad()
+
             outputs = model(images)
 
-            loss = criterion(outputs, labels)
+            loss = criterion(
+                outputs,
+                labels
+            )
 
-            val_loss_total += loss.item() * images.size(0)
+            loss.backward()
 
-            _, predictions = torch.max(outputs, 1)
+            optimizer.step()
 
-            val_correct += (
+            running_loss += (
+                loss.item()
+                * images.size(0)
+            )
+
+            _, predictions = torch.max(
+                outputs,
+                1
+            )
+
+            correct += (
                 predictions == labels
             ).sum().item()
 
-            val_total += labels.size(0)
+            total += labels.size(0)
 
-    val_loss = val_loss_total / val_total
-    val_accuracy = val_correct / val_total
+        train_loss = (
+            running_loss / total
+        )
 
+        train_accuracy = (
+            correct / total
+        )
 
-    print(
-        f"Epoch {epoch + 1}/{EPOCHS} | "
-        f"Train Loss: {train_loss:.4f} | "
-        f"Train Acc: {train_accuracy:.4f} | "
-        f"Val Loss: {val_loss:.4f} | "
-        f"Val Acc: {val_accuracy:.4f}"
-    )
+        # Validation
 
+        model.eval()
 
-#Save best model
-    if val_accuracy > best_val_accuracy:
+        val_loss_total = 0.0
+        val_correct = 0
+        val_total = 0
 
-        best_val_accuracy = val_accuracy
+        with torch.no_grad():
 
-        torch.save(
-            model.state_dict(),
-            MODEL_DIR / "best_model.pt"
+            for images, labels in val_loader:
+
+                images = images.to(device)
+                labels = labels.to(device)
+
+                outputs = model(images)
+
+                loss = criterion(
+                    outputs,
+                    labels
+                )
+
+                val_loss_total += (
+                    loss.item()
+                    * images.size(0)
+                )
+
+                _, predictions = torch.max(
+                    outputs,
+                    1
+                )
+
+                val_correct += (
+                    predictions == labels
+                ).sum().item()
+
+                val_total += labels.size(0)
+
+        val_loss = (
+            val_loss_total
+            / val_total
+        )
+
+        val_accuracy = (
+            val_correct
+            / val_total
         )
 
         print(
-            f"Saved new best model "
-            f"with validation accuracy "
-            f"{best_val_accuracy:.4f}"
+            f"Epoch {epoch + 1}/{EPOCHS} | "
+            f"Train Loss: {train_loss:.4f} | "
+            f"Train Acc: {train_accuracy:.4f} | "
+            f"Val Loss: {val_loss:.4f} | "
+            f"Val Acc: {val_accuracy:.4f}"
         )
 
+        # Save best candidate model
 
-print("\nTraining complete.")
-print("Best validation accuracy:", best_val_accuracy)
+        if val_accuracy > best_val_accuracy:
+
+            best_val_accuracy = (
+                val_accuracy
+            )
+
+            torch.save(
+                model.state_dict(),
+                CANDIDATE_MODEL_FILE
+            )
+
+            print(
+                "Saved new best candidate model "
+                "with validation accuracy "
+                f"{best_val_accuracy:.4f}"
+            )
+
+    print("\nTraining complete.")
+
+    print(
+        "Best validation accuracy:",
+        best_val_accuracy
+    )
+
+    print(
+        "Candidate model saved to:",
+        CANDIDATE_MODEL_FILE
+    )
+
+    return str(
+        CANDIDATE_MODEL_FILE
+    )
+
+
+if __name__ == "__main__":
+    train_model()

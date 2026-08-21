@@ -89,9 +89,7 @@ def get_dataset_fingerprint() -> str:
 @step(enable_cache=False)
 def dataset_fingerprint_step() -> str:
 
-    return (
-        get_dataset_fingerprint()
-    )
+    return get_dataset_fingerprint()
 
 
 @step
@@ -124,6 +122,11 @@ def deepcheck_data_step(
     return prepared_fingerprint
 
 
+# ---------------------------------
+# NORMAL TRAINING STEP
+# Requires your MLflow tracker.
+# ---------------------------------
+
 @step(
     enable_cache=False,
     experiment_tracker="mlflow_tracker",
@@ -138,6 +141,25 @@ def training_step(
         resume=resume,
         epochs=epochs,
         data_dir=Path(data_dir),
+        log_to_mlflow=True,
+    )
+
+
+# ---------------------------------
+# CI TRAINING STEP
+# No MLflow tracker required.
+# ---------------------------------
+
+@step(enable_cache=False)
+def ci_training_step(
+    data_dir: str,
+) -> str:
+
+    return train_model(
+        resume=False,
+        epochs=1,
+        data_dir=Path(data_dir),
+        log_to_mlflow=False,
     )
 
 
@@ -158,9 +180,7 @@ def candidate_evaluation_step(
 @step(enable_cache=False)
 def production_evaluation_step() -> dict:
 
-    if not (
-        PRODUCTION_MODEL_PATH.exists()
-    ):
+    if not PRODUCTION_MODEL_PATH.exists():
 
         raise FileNotFoundError(
             "Production model does not exist:\n"
@@ -206,12 +226,10 @@ def training_pipeline(
             "Running ZenML CI smoke test"
         )
 
-        training_step(
+        ci_training_step(
             data_dir=str(
                 CI_DATA_DIR
-            ),
-            resume=False,
-            epochs=1,
+            )
         )
 
         return

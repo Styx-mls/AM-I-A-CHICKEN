@@ -56,6 +56,7 @@ def train_model(
     resume: bool = False,
     epochs: int = EPOCHS,
     data_dir: Path = DATA_DIR,
+    log_to_mlflow: bool = True,
 ) -> str:
 
     device = torch.device("cpu")
@@ -83,10 +84,7 @@ def train_model(
 
     print("Training data:", data_dir)
     print("Classes:", train_dataset.classes)
-    print(
-        "Class mapping:",
-        train_dataset.class_to_idx,
-    )
+    print("Class mapping:", train_dataset.class_to_idx)
 
     class_counts = [
         0
@@ -102,14 +100,16 @@ def train_model(
 
     if len(class_counts) != 3:
         raise ValueError(
-            "Expected exactly 3 classes: "
-            "chicken, human, and other."
+            "Expected exactly 3 classes."
         )
 
-    if any(count == 0 for count in class_counts):
+    if any(
+        count == 0
+        for count in class_counts
+    ):
         raise ValueError(
-            "Every class must contain at least one "
-            "training image."
+            "Every class must contain at least "
+            "one training image."
         )
 
     class_weights = [
@@ -149,6 +149,7 @@ def train_model(
     ).to(device)
 
     if resume:
+
         if not PRODUCTION_MODEL_FILE.exists():
             raise FileNotFoundError(
                 "Cannot continue training because "
@@ -158,6 +159,7 @@ def train_model(
             )
 
         print("\nCONTINUING TRAINING")
+
         print(
             "Loading production checkpoint from:\n"
             f"{PRODUCTION_MODEL_FILE}"
@@ -174,6 +176,7 @@ def train_model(
         )
 
     else:
+
         print(
             "\nTRAINING FROM SCRATCH"
         )
@@ -183,64 +186,68 @@ def train_model(
             "will be loaded."
         )
 
-    # MLflow parameters
+    # -------------------------
+    # MLFLOW PARAMETERS
+    # -------------------------
 
-    mlflow.log_param(
-        "batch_size",
-        BATCH_SIZE,
-    )
+    if log_to_mlflow:
 
-    mlflow.log_param(
-        "epochs",
-        epochs,
-    )
+        mlflow.log_param(
+            "batch_size",
+            BATCH_SIZE,
+        )
 
-    mlflow.log_param(
-        "learning_rate",
-        LEARNING_RATE,
-    )
+        mlflow.log_param(
+            "epochs",
+            epochs,
+        )
 
-    mlflow.log_param(
-        "training_mode",
-        "continue"
-        if resume
-        else "scratch",
-    )
+        mlflow.log_param(
+            "learning_rate",
+            LEARNING_RATE,
+        )
 
-    mlflow.log_param(
-        "optimizer",
-        "Adam",
-    )
+        mlflow.log_param(
+            "training_mode",
+            "continue"
+            if resume
+            else "scratch",
+        )
 
-    mlflow.log_param(
-        "loss_function",
-        "CrossEntropyLoss",
-    )
+        mlflow.log_param(
+            "optimizer",
+            "Adam",
+        )
 
-    mlflow.log_param(
-        "image_size",
-        "128x128",
-    )
+        mlflow.log_param(
+            "loss_function",
+            "CrossEntropyLoss",
+        )
 
-    mlflow.log_param(
-        "num_classes",
-        3,
-    )
+        mlflow.log_param(
+            "image_size",
+            "128x128",
+        )
 
-    mlflow.log_param(
-        "chicken_weight_multiplier",
-        CHICKEN_WEIGHT_MULTIPLIER,
-    )
+        mlflow.log_param(
+            "num_classes",
+            3,
+        )
 
-    mlflow.log_param(
-        "dataset_version",
-        DATASET_VERSION,
-    )
+        mlflow.log_param(
+            "chicken_weight_multiplier",
+            CHICKEN_WEIGHT_MULTIPLIER,
+        )
 
-    mlflow.log_param(
-        "data_dir",
-        str(data_dir),
-    )
+        mlflow.log_param(
+            "dataset_version",
+            DATASET_VERSION,
+        )
+
+        mlflow.log_param(
+            "data_dir",
+            str(data_dir),
+        )
 
     criterion = (
         nn.CrossEntropyLoss()
@@ -251,13 +258,13 @@ def train_model(
         lr=LEARNING_RATE,
     )
 
-    best_val_accuracy = 0.0
+    best_val_accuracy = -1.0
 
     for epoch in range(epochs):
 
-        # -----------------
+        # -------------------------
         # TRAINING
-        # -----------------
+        # -------------------------
 
         model.train()
 
@@ -288,11 +295,9 @@ def train_model(
                 * images.size(0)
             )
 
-            _, predictions = (
-                torch.max(
-                    outputs,
-                    1,
-                )
+            _, predictions = torch.max(
+                outputs,
+                1,
             )
 
             correct += (
@@ -311,9 +316,9 @@ def train_model(
             / total
         )
 
-        # -----------------
+        # -------------------------
         # VALIDATION
-        # -----------------
+        # -------------------------
 
         model.eval()
 
@@ -340,11 +345,9 @@ def train_model(
                     * images.size(0)
                 )
 
-                _, predictions = (
-                    torch.max(
-                        outputs,
-                        1,
-                    )
+                _, predictions = torch.max(
+                    outputs,
+                    1,
                 )
 
                 val_correct += (
@@ -371,37 +374,39 @@ def train_model(
             f"Val Acc: {val_accuracy:.4f}"
         )
 
-        # -----------------
+        # -------------------------
         # MLFLOW METRICS
-        # -----------------
+        # -------------------------
 
-        mlflow.log_metric(
-            "train_loss",
-            train_loss,
-            step=epoch,
-        )
+        if log_to_mlflow:
 
-        mlflow.log_metric(
-            "train_accuracy",
-            train_accuracy,
-            step=epoch,
-        )
+            mlflow.log_metric(
+                "train_loss",
+                train_loss,
+                step=epoch,
+            )
 
-        mlflow.log_metric(
-            "val_loss",
-            val_loss,
-            step=epoch,
-        )
+            mlflow.log_metric(
+                "train_accuracy",
+                train_accuracy,
+                step=epoch,
+            )
 
-        mlflow.log_metric(
-            "val_accuracy",
-            val_accuracy,
-            step=epoch,
-        )
+            mlflow.log_metric(
+                "val_loss",
+                val_loss,
+                step=epoch,
+            )
 
-        # -----------------
+            mlflow.log_metric(
+                "val_accuracy",
+                val_accuracy,
+                step=epoch,
+            )
+
+        # -------------------------
         # SAVE BEST MODEL
-        # -----------------
+        # -------------------------
 
         if (
             val_accuracy
@@ -423,15 +428,19 @@ def train_model(
                 f"{best_val_accuracy:.4f}"
             )
 
-    mlflow.log_metric(
-        "best_val_accuracy",
-        best_val_accuracy,
-    )
+    if log_to_mlflow:
 
-    mlflow.log_param(
-        "candidate_model_path",
-        str(CANDIDATE_MODEL_FILE),
-    )
+        mlflow.log_metric(
+            "best_val_accuracy",
+            best_val_accuracy,
+        )
+
+        mlflow.log_param(
+            "candidate_model_path",
+            str(
+                CANDIDATE_MODEL_FILE
+            ),
+        )
 
     print(
         "\nTraining complete."

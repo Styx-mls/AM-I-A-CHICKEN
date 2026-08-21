@@ -26,3 +26,6 @@ jobs:
       
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Run ZenML training test
+        run: python -m training.run_ci_pipeline

@@ -9,3 +9,5 @@ httpx2
 zenml[local]
 deepchecks[vision]
 mlflow
+pkg_resources
+scikit-learn==1.6.1

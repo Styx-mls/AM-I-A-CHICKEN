@@ -11,14 +11,33 @@ from training.model_promotion import promote_model
 from training.deepchecks_validation import run_deepchecks
 
 
+TRAINING_DIR = (
+    Path(__file__)
+    .resolve()
+    .parent
+    .parent
+)
 
-TRAINING_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = TRAINING_DIR.parent
+PROJECT_ROOT = (
+    TRAINING_DIR.parent
+)
 
 RAW_DATA_DIR = (
     TRAINING_DIR
     / "Core_Dataset"
     / "raw"
+)
+
+PROCESSED_DATA_DIR = (
+    TRAINING_DIR
+    / "Core_Dataset"
+    / "processed_v1"
+)
+
+CI_DATA_DIR = (
+    TRAINING_DIR
+    / "ci_dataset"
+    / "processed_v1"
 )
 
 PRODUCTION_MODEL_PATH = (
@@ -30,6 +49,7 @@ PRODUCTION_MODEL_PATH = (
 
 
 def get_dataset_fingerprint() -> str:
+
     hasher = hashlib.sha256()
 
     for file_path in sorted(
@@ -46,7 +66,9 @@ def get_dataset_fingerprint() -> str:
         )
 
         hasher.update(
-            str(relative_path).encode()
+            str(
+                relative_path
+            ).encode()
         )
 
         hasher.update(
@@ -67,12 +89,14 @@ def get_dataset_fingerprint() -> str:
 @step(enable_cache=False)
 def dataset_fingerprint_step() -> str:
 
-    return get_dataset_fingerprint()
+    return (
+        get_dataset_fingerprint()
+    )
 
 
 @step
 def validation_step(
-    dataset_fingerprint: str
+    dataset_fingerprint: str,
 ) -> str:
 
     validate_data()
@@ -82,16 +106,17 @@ def validation_step(
 
 @step
 def preparation_step(
-    validated_fingerprint: str
+    validated_fingerprint: str,
 ) -> str:
 
     prep_data()
 
     return validated_fingerprint
 
-@step(enable_cache = False)
+
+@step(enable_cache=False)
 def deepcheck_data_step(
-    prepared_fingerprint: str
+    prepared_fingerprint: str,
 ) -> str:
 
     run_deepchecks()
@@ -99,45 +124,54 @@ def deepcheck_data_step(
     return prepared_fingerprint
 
 
-
-
 @step(
     enable_cache=False,
-    experiment_tracker="mlflow_tracker"
+    experiment_tracker="mlflow_tracker",
 )
 def training_step(
-    prepared_fingerprint: str
+    data_dir: str,
+    resume: bool = False,
+    epochs: int = 5,
 ) -> str:
 
-    return train_model()
+    return train_model(
+        resume=resume,
+        epochs=epochs,
+        data_dir=Path(data_dir),
+    )
 
 
 @step(
     enable_cache=False,
-    experiment_tracker="mlflow_tracker"
+    experiment_tracker="mlflow_tracker",
 )
 def candidate_evaluation_step(
-    model_path: str
+    model_path: str,
 ) -> dict:
 
     return eval_model(
         model_path,
-        log_to_mlflow=True
+        log_to_mlflow=True,
     )
 
 
 @step(enable_cache=False)
 def production_evaluation_step() -> dict:
 
-    if not PRODUCTION_MODEL_PATH.exists():
+    if not (
+        PRODUCTION_MODEL_PATH.exists()
+    ):
+
         raise FileNotFoundError(
             "Production model does not exist:\n"
             f"{PRODUCTION_MODEL_PATH}"
         )
 
     return eval_model(
-        str(PRODUCTION_MODEL_PATH),
-        log_to_mlflow=False
+        str(
+            PRODUCTION_MODEL_PATH
+        ),
+        log_to_mlflow=False,
     )
 
 
@@ -151,12 +185,40 @@ def promotion_step(
     return promote_model(
         candidate_model_path,
         candidate_metrics,
-        production_metrics
+        production_metrics,
     )
 
 
 @pipeline
-def training_pipeline() -> None:
+def training_pipeline(
+    resume: bool = False,
+    epochs: int = 5,
+    ci_mode: bool = False,
+) -> None:
+
+    # ---------------------------------
+    # CI SMOKE TEST
+    # ---------------------------------
+
+    if ci_mode:
+
+        print(
+            "Running ZenML CI smoke test"
+        )
+
+        training_step(
+            data_dir=str(
+                CI_DATA_DIR
+            ),
+            resume=False,
+            epochs=1,
+        )
+
+        return
+
+    # ---------------------------------
+    # NORMAL TRAINING PIPELINE
+    # ---------------------------------
 
     dataset_fingerprint = (
         dataset_fingerprint_step()
@@ -174,14 +236,17 @@ def training_pipeline() -> None:
         )
     )
 
-   
     deepcheck_data_step(
         prepared_fingerprint
     )
 
     candidate_model_path = (
         training_step(
-            prepared_fingerprint
+            data_dir=str(
+                PROCESSED_DATA_DIR
+            ),
+            resume=resume,
+            epochs=epochs,
         )
     )
 
@@ -198,7 +263,7 @@ def training_pipeline() -> None:
     promotion_step(
         candidate_model_path,
         candidate_metrics,
-        production_metrics
+        production_metrics,
     )
 
 

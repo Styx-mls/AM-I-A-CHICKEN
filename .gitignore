@@ -3,3 +3,6 @@ __pycache__/
 .DS_Store
 training/Core_dataset
 training/models
+.matplotlib-cache
+deepchecks_report.html
+.zen

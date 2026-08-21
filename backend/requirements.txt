@@ -6,3 +6,5 @@ pillow
 python-multipart
 pytest
 httpx2
+zenml[local]
+deepchecks[vision]

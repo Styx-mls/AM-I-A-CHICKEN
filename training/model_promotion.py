@@ -1,8 +1,6 @@
 from pathlib import Path
 import shutil
 
-from training.evaluate import eval_model
-
 
 TRAINING_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TRAINING_DIR.parent
@@ -18,9 +16,12 @@ PRODUCTION_MODEL_PATH = (
 def promote_model(
     candidate_model_path: str,
     candidate_metrics: dict,
+    production_metrics: dict,
 ) -> bool:
 
-    candidate_model_path = Path(candidate_model_path)
+    candidate_model_path = Path(
+        candidate_model_path
+    )
 
     if not candidate_model_path.exists():
         raise FileNotFoundError(
@@ -33,7 +34,19 @@ def promote_model(
     )
 
     candidate_chicken_accuracy = (
-        candidate_metrics["per_class_accuracy"]["chicken"]
+        candidate_metrics[
+            "per_class_accuracy"
+        ]["chicken"]
+    )
+
+    production_accuracy = (
+        production_metrics["accuracy"]
+    )
+
+    production_chicken_accuracy = (
+        production_metrics[
+            "per_class_accuracy"
+        ]["chicken"]
     )
 
     print("\n--- MODEL PROMOTION ---")
@@ -48,47 +61,8 @@ def promote_model(
         f"{candidate_chicken_accuracy:.4f}"
     )
 
-    # If no production model exists yet,
-    # automatically promote the candidate.
-    if not PRODUCTION_MODEL_PATH.exists():
-
-        PRODUCTION_MODEL_PATH.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        shutil.copy2(
-            candidate_model_path,
-            PRODUCTION_MODEL_PATH
-        )
-
-        print(
-            "\nNo production model exists."
-        )
-
-        print(
-            "Candidate promoted to production."
-        )
-
-        return True
-
-    # Evaluate current production model
-    production_metrics = eval_model(
-        str(PRODUCTION_MODEL_PATH)
-    )
-
-    production_accuracy = (
-        production_metrics["accuracy"]
-    )
-
-    production_chicken_accuracy = (
-        production_metrics[
-            "per_class_accuracy"
-        ]["chicken"]
-    )
-
     print(
-        f"\nProduction overall accuracy: "
+        f"Production overall accuracy: "
         f"{production_accuracy:.4f}"
     )
 
@@ -97,7 +71,6 @@ def promote_model(
         f"{production_chicken_accuracy:.4f}"
     )
 
-    # Candidate must improve BOTH metrics
     overall_better = (
         candidate_accuracy
         > production_accuracy
@@ -109,6 +82,11 @@ def promote_model(
     )
 
     if overall_better and chicken_better:
+
+        PRODUCTION_MODEL_PATH.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
 
         shutil.copy2(
             candidate_model_path,
@@ -145,10 +123,3 @@ def promote_model(
     )
 
     return False
-
-
-if __name__ == "__main__":
-    raise RuntimeError(
-        "model_promotion.py should be run "
-        "through the ZenML pipeline."
-    )

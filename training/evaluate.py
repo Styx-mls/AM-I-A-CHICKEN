@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import mlflow
 import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -13,7 +14,10 @@ DATA_DIR = TRAINING_DIR / "Core_Dataset" / "processed_v1"
 BATCH_SIZE = 32
 
 
-def eval_model(model_path: str) -> dict:
+def eval_model(
+    model_path: str,
+    log_to_mlflow: bool = True,
+) -> dict:
 
     device = torch.device("cpu")
 
@@ -100,9 +104,11 @@ def eval_model(model_path: str) -> dict:
     accuracy = correct / total
 
     print("\n--- TEST RESULTS ---")
+
     print(
         f"Model: {model_path}"
     )
+
     print(
         f"Test accuracy: {accuracy:.4f}"
     )
@@ -150,6 +156,45 @@ def eval_model(model_path: str) -> dict:
             f"{class_accuracy:.4f}"
         )
 
+    # Only log when this evaluation is running
+    # inside the ZenML MLflow-tracked evaluation step.
+
+    if log_to_mlflow:
+
+        mlflow.log_param(
+            "evaluated_model_path",
+            str(model_path)
+        )
+
+        mlflow.log_metric(
+            "test_accuracy",
+            accuracy
+        )
+
+        mlflow.log_metric(
+            "test_chicken_accuracy",
+            per_class_accuracy["chicken"]
+        )
+
+        mlflow.log_metric(
+            "test_human_accuracy",
+            per_class_accuracy["human"]
+        )
+
+        mlflow.log_metric(
+            "test_other_accuracy",
+            per_class_accuracy["other"]
+        )
+
+        mlflow.log_dict(
+            {
+                "classes": test_dataset.classes,
+                "class_to_idx": test_dataset.class_to_idx,
+                "confusion_matrix": confusion_matrix.tolist(),
+            },
+            "confusion_matrix.json",
+        )
+
     return {
         "model_path": str(model_path),
         "accuracy": accuracy,
@@ -160,6 +205,6 @@ def eval_model(model_path: str) -> dict:
 
 if __name__ == "__main__":
     raise RuntimeError(
-        "evaluate.py now requires a model path. "
+        "evaluate.py requires a model path. "
         "Run it through the ZenML pipeline."
     )

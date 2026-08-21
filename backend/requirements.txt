@@ -9,5 +9,5 @@ httpx2
 zenml[local]
 deepchecks[vision]
 mlflow
-setuptools
+setuptools==80.10.2
 scikit-learn==1.6.1

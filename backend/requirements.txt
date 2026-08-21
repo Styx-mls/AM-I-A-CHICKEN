@@ -8,3 +8,4 @@ pytest
 httpx2
 zenml[local]
 deepchecks[vision]
+mlflow

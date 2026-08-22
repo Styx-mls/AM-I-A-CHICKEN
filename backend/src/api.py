@@ -1,16 +1,9 @@
 from io import BytesIO
-from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 from inference import CLASS_NAMES, model_ready, predict_image
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 
 api = FastAPI(
@@ -19,16 +12,12 @@ api = FastAPI(
 )
 
 
-api.mount(
-    "/static",
-    StaticFiles(directory=FRONTEND_DIR),
-    name="static"
-)
-
-
 @api.get("/")
-def frontend():
-    return FileResponse(FRONTEND_DIR / "index.html")
+def root():
+    return {
+        "message": "Am I a Chicken API",
+        "docs": "/docs"
+    }
 
 
 @api.get("/health")
@@ -74,6 +63,7 @@ async def predict(file: UploadFile = File(...)):
         )
 
     try:
+
         contents = await file.read()
 
         image = Image.open(
@@ -81,6 +71,7 @@ async def predict(file: UploadFile = File(...)):
         ).convert("RGB")
 
     except Exception:
+
         raise HTTPException(
             status_code=400,
             detail="Could not read image"

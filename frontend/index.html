@@ -1,42 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Am I A Chicken?</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Am I A Chicken?</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-    <div class="question q1">?</div>
-    <div class="question q2">?</div>
-    <div class="question q3">?</div>
-    <div class="question q4">?</div>
 
-    <main>
+  <header class="topbar">
+    <div class="logo">AM I A CHICKEN?</div>
+    <div class="tagline">Chicken or not? Let's find out.</div>
+  </header>
+
+  <main class="page">
+
+    <section class="app-card">
+
+      <div class="hero">
         <h1>AM I A CHICKEN?</h1>
-        <p>Upload a photo to find out.</p>
+        <div class="title-line"></div>
+        <p>
+          Upload a photo and our AI will tell you if it's a chicken.
+        </p>
+      </div>
 
-        <div id="photo-box">
-            <span id="photo-status">No photo selected</span>
-            <img id="preview" alt="Selected photo">
+      <div id="drop-zone" class="upload-zone">
+
+        <div class="upload-icon">
+          ↑
         </div>
+
+        <h2>Drag & drop an image here</h2>
+
+        <p>or click to browse your files</p>
 
         <input
-            id="upload-input"
-            type="file"
-            accept="image/*"
-            hidden
-        >
+          id="file-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          hidden
+        />
 
-        <div class="buttons">
-            <button id="upload-button">UPLOAD PHOTO</button>
-            <button id="analyze-button" disabled>ANALYZE</button>
+        <button id="choose-button" class="choose-button">
+          Choose Photo
+        </button>
+
+        <div id="file-name" class="file-name"></div>
+
+        <p class="file-info">
+          Supports: JPG, PNG, WebP (Max 10MB)
+        </p>
+
+      </div>
+
+      <div id="preview-section" class="preview-section hidden">
+
+        <img id="image-preview" alt="Selected image preview" />
+
+        <button id="analyze-button" class="analyze-button">
+          Analyze Image
+        </button>
+
+        <div id="result" class="result"></div>
+
+      </div>
+
+      <section class="how-it-works">
+
+        <h2>How it works</h2>
+
+        <div class="steps">
+
+          <div class="step">
+            <div class="step-number">1</div>
+
+            <div>
+              <h3>Upload Photo</h3>
+              <p>
+                Upload or drag & drop a clear photo of the subject.
+              </p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-number">2</div>
+
+            <div>
+              <h3>AI Analysis</h3>
+              <p>
+                Our model analyzes the image in seconds.
+              </p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-number">3</div>
+
+            <div>
+              <h3>Get Result</h3>
+              <p>
+                See whether it's a chicken, human, or something else.
+              </p>
+            </div>
+          </div>
+
         </div>
 
-        <div id="result"></div>
-    </main>
+      </section>
 
-    <script src="/static/app.js"></script>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>Built with FastAPI & PyTorch</span>
+    <span>•</span>
+    <span>Not sure? Try another angle.</span>
+    <span>•</span>
+    <span>v1.0.0</span>
+  </footer>
+
+  <script src="app.js"></script>
+
 </body>
 </html>

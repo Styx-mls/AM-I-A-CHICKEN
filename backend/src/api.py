@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 from inference import CLASS_NAMES, model_ready, predict_image
@@ -9,6 +10,19 @@ from inference import CLASS_NAMES, model_ready, predict_image
 api = FastAPI(
     title="Am I a Chicken API",
     version="1.0.0"
+)
+
+
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5500",
+        # Add your Vercel URL here later:
+        # "https://your-app.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -37,6 +51,7 @@ def health():
 
 @api.get("/classes")
 def classes():
+
     return {
         "classes": CLASS_NAMES
     }
@@ -44,6 +59,7 @@ def classes():
 
 @api.get("/model-info")
 def model_info():
+
     return {
         "model": "ChickenCNN",
         "model_version": "v1",
@@ -54,9 +70,14 @@ def model_info():
 
 
 @api.post("/api/predict")
-async def predict(file: UploadFile = File(...)):
+async def predict(
+    file: UploadFile = File(...)
+):
 
-    if not file.content_type or not file.content_type.startswith("image/"):
+    if (
+        not file.content_type
+        or not file.content_type.startswith("image/")
+    ):
         raise HTTPException(
             status_code=400,
             detail="Uploaded file must be an image"
@@ -77,6 +98,15 @@ async def predict(file: UploadFile = File(...)):
             detail="Could not read image"
         )
 
-    result = predict_image(image)
+    try:
+
+        result = predict_image(image)
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(exc)}"
+        )
 
     return result

@@ -16,7 +16,7 @@ api = FastAPI(
 api.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5500",
+        "https://am-i-a-chicken.vercel.app",
         # Add your Vercel URL here later:
         # "https://your-app.vercel.app",
     ],
